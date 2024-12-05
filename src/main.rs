@@ -5,6 +5,7 @@ use tokio::net::UdpSocket;
 
 mod client;
 mod handler;
+mod logger;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -12,6 +13,9 @@ struct Args {
     /// DNS服务器监听端口
     #[arg(short, long, default_value_t = 5653)]
     port: u16,
+
+    #[arg(long, help = "Log filepath")]
+    log: Option<String>,
 }
 
 #[tokio::main]
@@ -20,7 +24,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // 初始化日志
-    tracing_subscriber::fmt::init();
+    let _guard = logger::init_logger("race_dns_proxy=info,info", args.log);
 
     let handler = handler::RaceHandler::new().await?;
     let mut server = ServerFuture::new(handler);

@@ -12,12 +12,14 @@ use hickory_proto::{
 use rustls::ClientConfig;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpStream as TokioTcpStream;
+use tokio::sync::watch;
 
 #[derive(Clone)]
 pub struct RetryableClient {
     dns_name: String,
     addr: SocketAddr,
-    client: Option<AsyncClient>,
+    client: watch::Receiver<Option<AsyncClient>>,
+    client_sender: watch::Sender<Option<AsyncClient>>,
     client_config: Arc<ClientConfig>,
 }
 
@@ -28,10 +30,13 @@ impl RetryableClient {
         client_config: Arc<ClientConfig>,
     ) -> Result<Self> {
         let client = Self::create_client(addr, dns_name, client_config.clone()).await?;
+        let (tx, rx) = watch::channel(Some(client));
+
         Ok(Self {
             dns_name: dns_name.to_string(),
             addr,
-            client: Some(client),
+            client: rx,
+            client_sender: tx,
             client_config,
         })
     }
@@ -53,26 +58,48 @@ impl RetryableClient {
     }
 
     pub async fn query(
-        &mut self,
+        &self,
         name: Name,
         query_class: DNSClass,
         query_type: RecordType,
     ) -> Result<DnsResponse> {
         const MAX_RETRIES: u32 = 3;
+        const INITIAL_RETRY_DELAY: u64 = 100; // 初始延迟 100ms
+        const MAX_RETRY_DELAY: u64 = 500; // 最大延迟 500ms
         let mut retries = 0;
+        let mut receiver = self.client.clone();
+
+        tracing::debug!(
+            "Client has changed: {}, <{}>",
+            receiver.has_changed().unwrap_or(false),
+            self.dns_name
+        );
 
         loop {
-            if let Some(client) = &mut self.client {
+            let client = {
+                let borrowed = receiver.borrow_and_update();
+                borrowed.clone()
+            };
+
+            if let Some(mut client) = client {
                 match client.query(name.clone(), query_class, query_type).await {
                     Ok(response) => {
                         if retries > 0 {
-                            tracing::debug!("Query success after {} retries", retries);
+                            tracing::debug!(
+                                "Query success after {} retries, <{}>",
+                                retries,
+                                self.dns_name
+                            );
                         }
                         return Ok(response);
                     }
                     Err(e) => {
-                        tracing::warn!("Query failed: {:?}, attempting reconnect", e);
-                        self.client = None;
+                        tracing::warn!(
+                            "Query failed: {:?}, attempting reconnect, <{}>",
+                            e,
+                            self.dns_name
+                        );
+                        self.client_sender.send(None)?;
                     }
                 }
             }
@@ -83,12 +110,15 @@ impl RetryableClient {
 
             match Self::create_client(self.addr, &self.dns_name, self.client_config.clone()).await {
                 Ok(new_client) => {
-                    self.client = Some(new_client);
+                    self.client_sender.send(Some(new_client))?;
                     retries += 1;
                 }
                 Err(e) => {
-                    tracing::error!("Failed to reconnect: {:?}", e);
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tracing::error!("Failed to reconnect: {:?}, <{}>", e, self.dns_name);
+                    let delay = INITIAL_RETRY_DELAY
+                        .saturating_mul(2_u64.saturating_pow(retries))
+                        .min(MAX_RETRY_DELAY);
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
                     retries += 1;
                 }
             }

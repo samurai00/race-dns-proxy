@@ -1,12 +1,7 @@
 use anyhow::Result;
 use futures::future::{select_all, BoxFuture};
-use hickory_client::{
-    client::{AsyncClient, ClientConnection},
-    h2::HttpsClientConnection,
-    proto::error::ProtoError,
-    rr::Name,
-};
-use hickory_proto::{iocompat::AsyncIoTokioAsStd, op::Message};
+use hickory_client::rr::Name;
+use hickory_proto::op::Message;
 use hickory_server::{
     authority::MessageResponseBuilder,
     proto::op::{Header, MessageType, OpCode, ResponseCode},
@@ -19,7 +14,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::net::TcpStream as TokioTcpStream;
 
 use crate::client::RetryableClient;
 
@@ -35,7 +29,6 @@ const DNSPOD_DOH: (&str, &str, &str) = ("1.12.12.12:443", "doh.pub", "DNSPod-DoH
 // const GOOGLE_DOH: (&str, &str, &str) = ("8.8.8.8:443", "dns.google", "Google-DoH");
 
 pub struct RaceHandler {
-    // dns_clients: Vec<(Arc<Mutex<RetryableClient>>, &'static str)>,
     dns_clients: Vec<(RetryableClient, &'static str)>,
 }
 
@@ -53,57 +46,6 @@ impl RaceHandler {
         }
 
         Ok(Self { dns_clients })
-    }
-
-    #[allow(dead_code)]
-    async fn create_client_doh(
-        addr: SocketAddr,
-        dns_name: &str,
-    ) -> Result<
-        (
-            AsyncClient,
-            impl std::future::Future<Output = Result<(), ProtoError>>,
-        ),
-        ProtoError,
-    > {
-        tracing::debug!("Creating DoH client for {} ({})", dns_name, addr);
-
-        // 创建根证书存储
-        let root_store = RootCertStore {
-            roots: webpki_roots::TLS_SERVER_ROOTS
-                .iter()
-                .map(|ta| {
-                    OwnedTrustAnchor::from_subject_spki_name_constraints(
-                        ta.subject.as_ref().to_vec(),
-                        ta.subject_public_key_info.as_ref().to_vec(),
-                        ta.name_constraints.as_ref().map(|nc| nc.as_ref().to_vec()),
-                    )
-                })
-                .collect(),
-        };
-
-        tracing::debug!(
-            "Created root store with {} certificates",
-            root_store.roots.len()
-        );
-
-        // 构建 TLS 客户端配置
-        let client_config = ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-
-        let client_config = Arc::new(client_config);
-        tracing::debug!("Creating HTTPS connection to {}", dns_name);
-
-        let conn: HttpsClientConnection<AsyncIoTokioAsStd<TokioTcpStream>> =
-            HttpsClientConnection::new(addr, dns_name.to_string(), client_config);
-
-        tracing::debug!("Creating DNS stream");
-        let stream = conn.new_stream(None);
-
-        tracing::debug!("Connecting AsyncClient");
-        AsyncClient::connect(stream).await
     }
 }
 
@@ -129,8 +71,7 @@ impl RequestHandler for RaceHandler {
             let query_class = query.query_class();
 
             let future = Box::pin(async move {
-                let mut clien_clone = client;
-                match clien_clone.query(name_clone, query_class, query_type).await {
+                match client.query(name_clone, query_class, query_type).await {
                     Ok(response) => Ok((response, start.elapsed(), name)),
                     Err(e) => Err(e),
                 }
