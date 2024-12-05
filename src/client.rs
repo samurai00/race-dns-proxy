@@ -95,7 +95,8 @@ impl RetryableClient {
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "Query failed: {:?}, attempting reconnect, <{}>",
+                            "Query failed for <{}>: {:?}, attempting reconnect, <{}>",
+                            name,
                             e,
                             self.dns_name
                         );
