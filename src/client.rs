@@ -46,12 +46,12 @@ impl RetryableClient {
         dns_name: &str,
         client_config: Arc<ClientConfig>,
     ) -> Result<AsyncClient> {
-        tracing::debug!("Creating HTTPS connection to {}", dns_name);
+        tracing::debug!(target: concat!(module_path!(), "::stdout"), "Creating HTTPS connection to {}", dns_name);
         let conn: HttpsClientConnection<AsyncIoTokioAsStd<TokioTcpStream>> =
             HttpsClientConnection::new(addr, dns_name.to_string(), client_config);
-        tracing::debug!("Creating DNS stream: {}", dns_name);
+        tracing::debug!(target: concat!(module_path!(), "::stdout"), "Creating DNS stream: {}", dns_name);
         let stream = conn.new_stream(None);
-        tracing::debug!("Connecting AsyncClient: {}", dns_name);
+        tracing::debug!(target: concat!(module_path!(), "::stdout"), "Connecting AsyncClient: {}", dns_name);
         let (client, bg) = AsyncClient::connect(stream).await?;
         tokio::spawn(bg);
         Ok(client)

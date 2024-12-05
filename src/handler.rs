@@ -9,39 +9,25 @@ use hickory_server::{
 };
 use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 use std::{
-    net::SocketAddr,
-    str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use crate::client::RetryableClient;
-
-// DNS服务器配置
-const ALIDNS_DOH: (&str, &str, &str) = ("223.5.5.5:443", "dns.alidns.com", "AliDNS-DoH");
-const DNSPOD_DOH: (&str, &str, &str) = ("1.12.12.12:443", "doh.pub", "DNSPod-DoH");
-
-// const CLOUDFLARE_DOH: (&str, &str, &str) = (
-//     "1.1.1.1:443", // 使用 Cloudflare 的主要 DNS IP
-//     "1.1.1.1",     // 使用正确的域名
-//     "Cloudflare-DoH",
-// );
-// const GOOGLE_DOH: (&str, &str, &str) = ("8.8.8.8:443", "dns.google", "Google-DoH");
+use crate::{client::RetryableClient, config::Config};
 
 pub struct RaceHandler {
-    dns_clients: Vec<(RetryableClient, &'static str)>,
+    dns_clients: Vec<(RetryableClient, String)>,
 }
 
 impl RaceHandler {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: &Config) -> Result<Self> {
         let mut dns_clients = Vec::new();
         let client_config = Arc::new(create_client_config());
 
-        // 初始化 DoH DNS客户端
-        for (addr, dns_name, name) in [ALIDNS_DOH, DNSPOD_DOH] {
-            let addr = SocketAddr::from_str(addr)?;
-            let client = RetryableClient::new(addr, dns_name, client_config.clone()).await?;
-            // dns_clients.push((Arc::new(Mutex::new(client)), name));
+        // 从配置文件初始化 DoH DNS客户端
+        let providers = config.get_providers()?;
+        for (addr, hostname, name) in providers {
+            let client = RetryableClient::new(addr, &hostname, client_config.clone()).await?;
             dns_clients.push((client, name));
         }
 
@@ -65,7 +51,6 @@ impl RequestHandler for RaceHandler {
         for (client, name) in &self.dns_clients {
             let start = Instant::now();
             let client = client.clone();
-            let name = *name;
             let name_clone = Name::from(query.name());
             let query_type = query.query_type();
             let query_class = query.query_class();

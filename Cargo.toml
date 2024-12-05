@@ -20,3 +20,5 @@ async-trait = "0.1"
 rustls = "0.21"
 webpki-roots = "0.26"
 time = { version = "0.3", features = ["serde-well-known", "std", "macros"] }
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }

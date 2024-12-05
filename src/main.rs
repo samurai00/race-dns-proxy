@@ -4,18 +4,23 @@ use hickory_server::ServerFuture;
 use tokio::net::UdpSocket;
 
 mod client;
+mod config;
 mod handler;
 mod logger;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// DNS服务器监听端口
+    /// DNS server listening port
     #[arg(short, long, default_value_t = 5653)]
     port: u16,
 
     #[arg(long, help = "Log filepath")]
     log: Option<String>,
+
+    /// Configuration file path
+    #[arg(short, long, default_value = "config.toml")]
+    config: String,
 }
 
 #[tokio::main]
@@ -26,7 +31,10 @@ async fn main() -> Result<()> {
     // 初始化日志
     let _guard = logger::init_logger("race_dns_proxy=info,info", args.log);
 
-    let handler = handler::RaceHandler::new().await?;
+    // 加载配置文件
+    let config = config::Config::load(&args.config)?;
+
+    let handler = handler::RaceHandler::new(&config).await?;
     let mut server = ServerFuture::new(handler);
 
     // 监听UDP端口
