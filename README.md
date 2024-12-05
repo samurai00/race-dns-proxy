@@ -13,6 +13,12 @@ A high-performance DNS proxy that races multiple DNS-over-HTTPS (DoH) providers 
 - Built with Rust for high performance and reliability
 - Configurable DNS providers via TOML configuration
 
+## Technology Stack
+
+- **hickory-dns**: Used for DNS protocol operations and DoH support.
+- **tokio**: Provides the asynchronous runtime for handling concurrent DNS queries.
+- ...
+
 ## Configuration
 
 Create or modify `config.toml` to configure DNS providers:
