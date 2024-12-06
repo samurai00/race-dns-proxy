@@ -112,7 +112,7 @@ impl RequestHandler for RaceHandler {
                             }
                         } else {
                             tracing::info!(
-                                "▸ {}: {}{:?} | {}",
+                                "◼︎ {}: {}{:?} | {}",
                                 name,
                                 format_response_code(response_code),
                                 elapsed,
@@ -121,7 +121,7 @@ impl RequestHandler for RaceHandler {
                         }
                     } else {
                         tracing::info!(
-                            "▸ {}: {}{:?} | {}",
+                            "◼︎ {}: {}{:?} | {}",
                             name,
                             format_response_code(response_code),
                             elapsed,
