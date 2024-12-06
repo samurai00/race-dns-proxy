@@ -1,4 +1,4 @@
-use time::{format_description::well_known, macros::offset};
+use time::macros::{format_description, offset};
 use tracing_subscriber::{
     filter::filter_fn, layer::SubscriberExt, util::SubscriberInitExt, Layer as _,
 };
@@ -9,7 +9,11 @@ pub fn init_logger(
 ) -> Vec<tracing_appender::non_blocking::WorkerGuard> {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| log_level_filter.into());
-    let timer = tracing_subscriber::fmt::time::OffsetTime::new(offset!(+8), well_known::Rfc3339);
+
+    // Create custom time format: yyyy-MM-dd HH:mm:ss.SSS
+    let format =
+        format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]");
+    let timer = tracing_subscriber::fmt::time::OffsetTime::new(offset!(+8), format);
 
     let mut guards = vec![];
 

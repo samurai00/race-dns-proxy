@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::future::{select_all, BoxFuture};
-use hickory_client::rr::Name;
+use hickory_client::{op::DnsResponse, rr::Name};
 use hickory_proto::op::Message;
 use hickory_server::{
     authority::MessageResponseBuilder,
@@ -45,7 +45,8 @@ impl RequestHandler for RaceHandler {
         // 构建查询任务
         let query = request.query();
         let request_id = request.id();
-        let mut futures: Vec<BoxFuture<'_, Result<(_, _, _), _>>> = Vec::new();
+        let mut futures: Vec<BoxFuture<'_, Result<(DnsResponse, Duration, &String), _>>> =
+            Vec::new();
         let mut names: Vec<&str> = Vec::new();
 
         for (client, name) in &self.dns_clients {
@@ -87,8 +88,6 @@ impl RequestHandler for RaceHandler {
                         if response_code != ResponseCode::ServFail
                             && response_code != ResponseCode::NXDomain
                         {
-                            tracing::info!("✔ {} => {:?}", name, elapsed);
-
                             let builder = MessageResponseBuilder::from_message_request(request);
                             let response = builder.build(
                                 *message.header(),
@@ -102,14 +101,32 @@ impl RequestHandler for RaceHandler {
                                 tracing::error!("Failed to send successful DNS response: {}", e);
                                 has_sent_response = false; // 发送失败则标记为未发送
                             } else {
+                                tracing::info!(
+                                    "✔ {} => {:?} | {}",
+                                    name,
+                                    elapsed,
+                                    format_answers(message.query(), message.answers())
+                                );
                                 final_response_code = response_code;
                                 has_sent_response = true;
                             }
                         } else {
-                            tracing::info!("{}: ({:?}) -> {:?}", name, response_code, elapsed);
+                            tracing::info!(
+                                "▸ {}: ({:?}) -> {:?} | {}",
+                                name,
+                                response_code,
+                                elapsed,
+                                format_answers(message.query(), message.answers())
+                            );
                         }
                     } else {
-                        tracing::info!("{}: ({:?}) -> {:?}", name, response_code, elapsed);
+                        tracing::info!(
+                            "▸ {}: ({:?}) -> {:?} | {}",
+                            name,
+                            response_code,
+                            elapsed,
+                            format_answers(message.query(), message.answers())
+                        );
                     }
                     remaining = rest;
                 }
@@ -135,13 +152,8 @@ impl RequestHandler for RaceHandler {
                 .or_else(|| responses.first())
                 .unwrap(); // 前面已经加了非空判断，所以这里必定至少有一个
 
-            let (response_code, message, name, elapsed) = selected_response;
-            tracing::info!(
-                "Fallback response ({:?}) from {} in {:?}",
-                response_code,
-                name,
-                elapsed
-            );
+            let (response_code, message, name, _) = selected_response;
+            tracing::info!("● Fallback response ({:?}) from {}", response_code, name);
 
             let builder = MessageResponseBuilder::from_message_request(request);
             let response = builder.build(
@@ -170,7 +182,7 @@ impl RequestHandler for RaceHandler {
             header.set_response_code(final_response_code);
             ResponseInfo::from(header)
         } else {
-            tracing::error!("All DNS queries failed");
+            tracing::error!("✘ All DNS queries failed");
             let mut header = Header::new();
             header.set_id(request_id);
             header.set_message_type(MessageType::Response);
@@ -219,4 +231,25 @@ fn create_client_config() -> ClientConfig {
         .with_safe_defaults()
         .with_root_certificates(root_store)
         .with_no_client_auth()
+}
+
+fn format_answers(
+    query: Option<&hickory_proto::op::Query>,
+    answers: &[hickory_proto::rr::Record],
+) -> String {
+    let query_info = query.map_or(String::from("?"), |q| {
+        format!("{}({})", q.name(), q.query_type())
+    });
+
+    if answers.is_empty() {
+        return format!("{} → (no answers)", query_info);
+    }
+
+    let answers_str = answers
+        .iter()
+        .filter_map(|record| record.data().map(|data| data.to_string()))
+        .collect::<Vec<_>>()
+        .join(" → ");
+
+    format!("{} → {}", query_info, answers_str)
 }
