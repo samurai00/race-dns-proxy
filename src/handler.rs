@@ -249,13 +249,35 @@ fn format_answers(
         return format!("{} → (no answers)", query_info);
     }
 
-    let answers_str = answers
-        .iter()
-        .filter_map(|record| record.data().map(|data| data.to_string()))
-        .collect::<Vec<_>>()
-        .join(" → ");
+    // Group answers by record type
+    let mut non_a_records = Vec::new();
+    let mut a_records = Vec::new();
 
-    format!("{} → {}", query_info, answers_str)
+    for record in answers {
+        if let Some(data) = record.data() {
+            let data_str = data.to_string();
+            // Check if it's an A record (contains only numbers and dots)
+            if data_str.chars().all(|c| c.is_ascii_digit() || c == '.') {
+                a_records.push(data_str);
+            } else {
+                non_a_records.push(data_str);
+            }
+        }
+    }
+
+    // Format non-A records with arrows, A records with commas
+    let mut result = String::new();
+    if !non_a_records.is_empty() {
+        result.push_str(&non_a_records.join(" → "));
+    }
+    if !a_records.is_empty() {
+        if !result.is_empty() {
+            result.push_str(" → ");
+        }
+        result.push_str(&a_records.join(", "));
+    }
+
+    format!("{} → {}", query_info, result)
 }
 
 fn format_response_code(code: ResponseCode) -> String {
