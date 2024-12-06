@@ -99,10 +99,10 @@ impl RequestHandler for RaceHandler {
 
                             if let Err(e) = response_handle.send_response(response).await {
                                 tracing::error!("Failed to send successful DNS response: {}", e);
-                                has_sent_response = false; // 发送失败则标记为未发送
+                                has_sent_response = false;
                             } else {
                                 tracing::info!(
-                                    "✔ {} => {:?} | {}",
+                                    "✔ {}: {:?} | {}",
                                     name,
                                     elapsed,
                                     format_answers(message.query(), message.answers())
@@ -112,18 +112,18 @@ impl RequestHandler for RaceHandler {
                             }
                         } else {
                             tracing::info!(
-                                "▸ {}: ({:?}) -> {:?} | {}",
+                                "▸ {}: {}{:?} | {}",
                                 name,
-                                response_code,
+                                format_response_code(response_code),
                                 elapsed,
                                 format_answers(message.query(), message.answers())
                             );
                         }
                     } else {
                         tracing::info!(
-                            "▸ {}: ({:?}) -> {:?} | {}",
+                            "▸ {}: {}{:?} | {}",
                             name,
-                            response_code,
+                            format_response_code(response_code),
                             elapsed,
                             format_answers(message.query(), message.answers())
                         );
@@ -153,7 +153,11 @@ impl RequestHandler for RaceHandler {
                 .unwrap(); // 前面已经加了非空判断，所以这里必定至少有一个
 
             let (response_code, message, name, _) = selected_response;
-            tracing::info!("● Fallback response ({:?}) from {}", response_code, name);
+            tracing::info!(
+                "● Fallback response {}from {}",
+                format_response_code(*response_code),
+                name
+            );
 
             let builder = MessageResponseBuilder::from_message_request(request);
             let response = builder.build(
@@ -252,4 +256,12 @@ fn format_answers(
         .join(" → ");
 
     format!("{} → {}", query_info, answers_str)
+}
+
+fn format_response_code(code: ResponseCode) -> String {
+    if code == ResponseCode::NoError {
+        String::new()
+    } else {
+        format!("({}) ", code.to_str())
+    }
 }
