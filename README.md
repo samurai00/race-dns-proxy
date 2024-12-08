@@ -15,7 +15,7 @@ A high-performance DNS proxy that races multiple DNS-over-HTTPS (DoH) providers 
 
 ## Technology Stack
 
-- **hickory-dns**: Used for DNS protocol operations and DoH support.
+- [**hickory-dns**](https://github.com/hickory-dns/hickory-dns): Used for DNS protocol operations and DoH support.
 - **tokio**: Provides the asynchronous runtime for handling concurrent DNS queries.
 - ...
 
