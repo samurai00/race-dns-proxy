@@ -38,6 +38,7 @@ pub fn init_logger(
         .with(env_filter)
         .with(
             tracing_subscriber::fmt::layer()
+                .with_ansi(stdout.is_none())
                 .with_timer(timer.clone())
                 .with_writer(non_blocking.clone()),
         )
