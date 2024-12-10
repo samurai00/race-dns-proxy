@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-hickory-proto = {version = "0.24.1", features = ["tokio-runtime", "dns-over-https"]}
+hickory-proto = { version = "0.24.1", features = [
+    "tokio-runtime",
+    "dns-over-https",
+] }
 hickory-client = { version = "0.24.1", default-features = false, features = [
     "dns-over-https-rustls",
 ] }
@@ -13,7 +16,7 @@ tokio = { version = "1.42", features = ["full"] }
 futures = "0.3"
 anyhow = "1.0"
 tracing = "0.1"
-tracing-subscriber = { version =  "0.3", features = ["env-filter", "time"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 tracing-appender = "0.2"
 clap = { version = "4.5.23", features = ["derive"] }
 async-trait = "0.1"

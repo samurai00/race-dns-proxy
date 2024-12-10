@@ -13,11 +13,13 @@ A high-performance DNS proxy that races multiple DNS-over-HTTPS (DoH) providers 
 - Built with Rust for high performance and reliability
 - Configurable DNS providers via TOML configuration
 
-## Technology Stack
+## Dependencies
 
-- [**hickory-dns**](https://github.com/hickory-dns/hickory-dns): Used for DNS protocol operations and DoH support.
-- **tokio**: Provides the asynchronous runtime for handling concurrent DNS queries.
-- ...
+- [hickory-dns](https://github.com/hickory-dns/hickory-dns): Used for DNS protocol operations and DoH support.
+- [tokio](https://github.com/tokio-rs/tokio): Provides the asynchronous runtime for handling concurrent DNS queries.
+- [rustls](https://github.com/rustls/rustls): A modern TLS library written in Rust.
+- [tracing](https://github.com/tokio-rs/tracing): Application-level tracing framework.
+- [webpki-roots](https://github.com/rustls/webpki-roots): Mozilla's CA root certificates for use with webpki.
 
 ## Configuration
 
@@ -56,4 +58,4 @@ The server will listen for DNS queries and forward them to configured DoH provid
 
 ## License
 
-MIT License
+This project is Licensed under [MIT License](LICENSE).
