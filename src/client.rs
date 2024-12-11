@@ -180,9 +180,11 @@ impl RetryableClient {
         let mut retry_delay = INITIAL_RETRY_DELAY;
 
         loop {
+            tracing::info!("Attempting to reconnect to <{}>", self.dns_name);
             match Self::create_client(self.addr, &self.dns_name, self.client_config.clone()).await {
                 Ok(new_client) => {
                     self.client_sender.send_if_modified(|inner| {
+                        tracing::info!("Reconnected to <{}>", self.dns_name);
                         inner.client = Some(new_client);
                         inner.version += 1;
                         true
