@@ -42,7 +42,7 @@ impl RetryableClient {
             version: 0,
         };
         let (tx, rx) = watch::channel(client_holder);
-        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::channel(1);
+        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::channel(100);
 
         let reconnect_client = Self {
             dns_name: dns_name.to_string(),
@@ -91,11 +91,12 @@ impl RetryableClient {
         query_class: DNSClass,
         query_type: RecordType,
     ) -> Result<DnsResponse> {
-        const MAX_RETRIES: u32 = 3;
+        const MAX_RETRIES: u32 = 6;
         const INITIAL_RETRY_DELAY: u64 = 100;
         const MAX_RETRY_DELAY: u64 = 600;
         let mut retries = 0;
         let mut receiver = self.client.clone();
+        let mut reconnect_sent = false;
 
         loop {
             let client_holder = {
@@ -139,14 +140,18 @@ impl RetryableClient {
                 return Err(anyhow::anyhow!("Max retries exceeded"));
             }
 
-            match self.reconnect_tx.send(()).await {
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to send reconnect signal: {:?}, <{}>",
-                        e,
-                        self.dns_name
-                    );
+            if !reconnect_sent {
+                match self.reconnect_tx.send(()).await {
+                    Ok(_) => {
+                        reconnect_sent = true;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to send reconnect signal: {:?}, <{}>",
+                            e,
+                            self.dns_name
+                        );
+                    }
                 }
             }
 
