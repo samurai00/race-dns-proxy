@@ -18,9 +18,16 @@ use tokio::sync::watch;
 pub struct RetryableClient {
     dns_name: String,
     addr: SocketAddr,
-    client: watch::Receiver<Option<AsyncClient>>,
-    client_sender: watch::Sender<Option<AsyncClient>>,
+    client: watch::Receiver<ClientHolder>,
+    client_sender: watch::Sender<ClientHolder>,
     client_config: Arc<ClientConfig>,
+    reconnect_tx: tokio::sync::mpsc::Sender<()>,
+}
+
+#[derive(Clone)]
+pub struct ClientHolder {
+    client: Option<AsyncClient>,
+    version: u64,
 }
 
 impl RetryableClient {
@@ -30,7 +37,27 @@ impl RetryableClient {
         client_config: Arc<ClientConfig>,
     ) -> Result<Self> {
         let client = Self::create_client(addr, dns_name, client_config.clone()).await?;
-        let (tx, rx) = watch::channel(Some(client));
+        let client_holder = ClientHolder {
+            client: Some(client),
+            version: 0,
+        };
+        let (tx, rx) = watch::channel(client_holder);
+        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::channel(1);
+
+        let reconnect_client = Self {
+            dns_name: dns_name.to_string(),
+            addr,
+            client: rx.clone(),
+            client_sender: tx.clone(),
+            client_config: client_config.clone(),
+            reconnect_tx: reconnect_tx.clone(),
+        };
+
+        tokio::spawn(async move {
+            while reconnect_rx.recv().await.is_some() {
+                reconnect_client.handle_reconnect().await;
+            }
+        });
 
         Ok(Self {
             dns_name: dns_name.to_string(),
@@ -38,6 +65,7 @@ impl RetryableClient {
             client: rx,
             client_sender: tx,
             client_config,
+            reconnect_tx,
         })
     }
 
@@ -64,24 +92,18 @@ impl RetryableClient {
         query_type: RecordType,
     ) -> Result<DnsResponse> {
         const MAX_RETRIES: u32 = 3;
-        const INITIAL_RETRY_DELAY: u64 = 100; // 初始延迟 100ms
-        const MAX_RETRY_DELAY: u64 = 500; // 最大延迟 500ms
+        const INITIAL_RETRY_DELAY: u64 = 100;
+        const MAX_RETRY_DELAY: u64 = 600;
         let mut retries = 0;
         let mut receiver = self.client.clone();
 
-        tracing::debug!(
-            "Client has changed: {}, <{}>",
-            receiver.has_changed().unwrap_or(false),
-            self.dns_name
-        );
-
         loop {
-            let client = {
+            let client_holder = {
                 let borrowed = receiver.borrow_and_update();
                 borrowed.clone()
             };
 
-            if let Some(mut client) = client {
+            if let Some(mut client) = client_holder.client {
                 match client.query(name.clone(), query_class, query_type).await {
                     Ok(response) => {
                         if retries > 0 {
@@ -100,7 +122,15 @@ impl RetryableClient {
                             e,
                             self.dns_name
                         );
-                        self.client_sender.send(None)?;
+                        self.client_sender.send_if_modified(|inner| {
+                            if inner.version == client_holder.version {
+                                inner.client = None;
+                                inner.version += 1;
+                                true
+                            } else {
+                                false
+                            }
+                        });
                     }
                 }
             }
@@ -109,20 +139,79 @@ impl RetryableClient {
                 return Err(anyhow::anyhow!("Max retries exceeded"));
             }
 
+            match self.reconnect_tx.send(()).await {
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to send reconnect signal: {:?}, <{}>",
+                        e,
+                        self.dns_name
+                    );
+                }
+            }
+
+            let delay = INITIAL_RETRY_DELAY
+                .saturating_mul(2_u64.saturating_pow(retries))
+                .min(MAX_RETRY_DELAY);
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+            retries += 1;
+        }
+    }
+
+    async fn handle_reconnect(&self) {
+        let mut receiver = self.client.clone();
+        let client_holder = {
+            let borrowed = receiver.borrow_and_update();
+            borrowed.clone()
+        };
+        if client_holder.client.is_some() {
+            return;
+        }
+
+        const INITIAL_RETRY_DELAY: u64 = 300;
+        const MAX_RETRY_DELAY: u64 = 5000;
+        const MAX_RETRIES: u32 = 5;
+        let mut retry_count = 0;
+        let mut retry_delay = INITIAL_RETRY_DELAY;
+
+        loop {
             match Self::create_client(self.addr, &self.dns_name, self.client_config.clone()).await {
                 Ok(new_client) => {
-                    self.client_sender.send(Some(new_client))?;
-                    retries += 1;
+                    self.client_sender.send_if_modified(|inner| {
+                        inner.client = Some(new_client);
+                        inner.version += 1;
+                        true
+                    });
+                    return;
                 }
                 Err(e) => {
                     tracing::error!("Failed to reconnect: {:?}, <{}>", e, self.dns_name);
-                    let delay = INITIAL_RETRY_DELAY
-                        .saturating_mul(2_u64.saturating_pow(retries))
-                        .min(MAX_RETRY_DELAY);
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
-                    retries += 1;
+                    if is_network_unreachable_error(&e) {
+                        retry_delay = MAX_RETRY_DELAY;
+                    }
                 }
+            }
+
+            tokio::time::sleep(Duration::from_millis(retry_delay)).await;
+            retry_delay = retry_delay.saturating_mul(2).min(MAX_RETRY_DELAY);
+            retry_count += 1;
+            if retry_count >= MAX_RETRIES {
+                tracing::error!("Max retries exceeded, <{}>", self.dns_name);
+                return;
             }
         }
     }
+}
+
+fn is_network_unreachable_error(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<std::io::Error>().map_or(false, |e| {
+        if e.raw_os_error() == Some(51) {
+            // 51 = ENETUNREACH on Unix
+            return true;
+        }
+        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+            return true;
+        }
+        false
+    })
 }
