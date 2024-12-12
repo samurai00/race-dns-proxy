@@ -7,6 +7,7 @@ edition = "2021"
 hickory-proto = { version = "0.24", features = [
     "tokio-runtime",
     "dns-over-https",
+    "backtrace",
 ] }
 hickory-client = { version = "0.24", default-features = false, features = [
     "dns-over-https-rustls",

@@ -6,6 +6,7 @@ use hickory_client::{
     rr::Name,
 };
 use hickory_proto::{
+    error::ProtoErrorKind,
     iocompat::AsyncIoTokioAsStd,
     rr::{DNSClass, RecordType},
 };
@@ -123,15 +124,17 @@ impl RetryableClient {
                             e,
                             self.dns_name
                         );
-                        self.client_sender.send_if_modified(|inner| {
-                            if inner.version == client_holder.version {
-                                inner.client = None;
-                                inner.version += 1;
-                                true
-                            } else {
-                                false
-                            }
-                        });
+                        if !is_receiver_canceled_error(&e) {
+                            self.client_sender.send_if_modified(|inner| {
+                                if inner.version == client_holder.version {
+                                    inner.client = None;
+                                    inner.version += 1;
+                                    true
+                                } else {
+                                    false
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -221,4 +224,16 @@ fn is_network_unreachable_error(e: &anyhow::Error) -> bool {
         }
         false
     })
+}
+
+fn is_receiver_canceled_error(e: &hickory_client::error::ClientError) -> bool {
+    match e.kind() {
+        hickory_client::error::ClientErrorKind::Proto(proto_err) => {
+            matches!(
+                &*proto_err.kind,
+                ProtoErrorKind::Message("receiver was canceled")
+            )
+        }
+        _ => false,
+    }
 }
