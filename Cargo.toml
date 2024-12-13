@@ -27,3 +27,7 @@ webpki-roots = "0.26"
 time = { version = "0.3", features = ["serde-well-known", "std", "macros"] }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
+mimalloc = { version = "0.1.43", optional = true }
+
+[features]
+default = ["mimalloc"]

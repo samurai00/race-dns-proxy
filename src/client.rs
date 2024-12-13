@@ -6,7 +6,6 @@ use hickory_client::{
     rr::Name,
 };
 use hickory_proto::{
-    error::ProtoErrorKind,
     iocompat::AsyncIoTokioAsStd,
     rr::{DNSClass, RecordType},
 };
@@ -93,7 +92,7 @@ impl RetryableClient {
         query_type: RecordType,
     ) -> Result<DnsResponse> {
         const MAX_RETRIES: u32 = 6;
-        const INITIAL_RETRY_DELAY: u64 = 100;
+        const INITIAL_RETRY_DELAY: u64 = 200;
         const MAX_RETRY_DELAY: u64 = 600;
         let mut retries = 0;
         let mut receiver = self.client.clone();
@@ -124,17 +123,15 @@ impl RetryableClient {
                             e,
                             self.dns_name
                         );
-                        if !is_receiver_canceled_error(&e) {
-                            self.client_sender.send_if_modified(|inner| {
-                                if inner.version == client_holder.version {
-                                    inner.client = None;
-                                    inner.version += 1;
-                                    true
-                                } else {
-                                    false
-                                }
-                            });
-                        }
+                        self.client_sender.send_if_modified(|inner| {
+                            if inner.version == client_holder.version {
+                                inner.client = None;
+                                inner.version += 1;
+                                true
+                            } else {
+                                false
+                            }
+                        });
                     }
                 }
             }
@@ -177,7 +174,7 @@ impl RetryableClient {
         }
 
         const INITIAL_RETRY_DELAY: u64 = 300;
-        const MAX_RETRY_DELAY: u64 = 5000;
+        const MAX_RETRY_DELAY: u64 = 3000;
         const MAX_RETRIES: u32 = 5;
         let mut retry_count = 0;
         let mut retry_delay = INITIAL_RETRY_DELAY;
@@ -224,16 +221,4 @@ fn is_network_unreachable_error(e: &anyhow::Error) -> bool {
         }
         false
     })
-}
-
-fn is_receiver_canceled_error(e: &hickory_client::error::ClientError) -> bool {
-    match e.kind() {
-        hickory_client::error::ClientErrorKind::Proto(proto_err) => {
-            matches!(
-                &*proto_err.kind,
-                ProtoErrorKind::Message("receiver was canceled")
-            )
-        }
-        _ => false,
-    }
 }
