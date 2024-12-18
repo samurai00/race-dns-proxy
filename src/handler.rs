@@ -65,15 +65,12 @@ impl RequestHandler for RaceHandler {
             .collect();
 
         let clients_to_use = if matching_clients.is_empty() {
-            tracing::info!(
-                "No specific DNS provider for domain: {}, using fallback providers",
-                query_name
-            );
             self.dns_clients
                 .iter()
                 .filter(|(_, _, domains)| domains.is_empty())
                 .collect::<Vec<_>>()
         } else {
+            tracing::info!("Using specific DNS provider for domain: {}", query_name);
             matching_clients
         };
 
