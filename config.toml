@@ -1,23 +1,45 @@
 # DNS Providers Configuration
-
 [providers]
 
 [providers.alidns-doh]
 addr = "223.5.5.5:443"
 hostname = "dns.alidns.com"
-domains = []
+domain_groups = ["default"]
 
 [providers.dnspod-doh]
 addr = "1.12.12.12:443"
 hostname = "doh.pub"
-domains = []
+domain_groups = ["default"]
 
 [providers.google-doh]
 addr = "8.8.8.8:443"
 hostname = "dns.google"
-domains = [".google.com", "google.com.hk", ".youtube.com", ".facebook.com", ".x.com", ".instagram.com", ".twitter.com", ".github.com"]
+domain_groups = ["google", "google_exclude", "foreign"]
 
 [providers.cloudflare-doh]
 addr = "1.1.1.1:443"
 hostname = "1.1.1.1"
-domains = [".google.com", "google.com.hk", ".youtube.com", ".facebook.com", ".x.com", ".instagram.com", ".twitter.com", ".github.com"]
+domain_groups = ["google", "google_exclude", "foreign"]
+
+# Domain Groups Configuration
+[domain_groups]
+default = []  # All domains
+
+google = [
+    "google.com",
+    "google.com.hk",
+    "googleapis.com",
+    "youtube.com"
+]
+
+google_exclude = [
+    "!safebrowsing.googleapis.com"
+]
+
+foreign = [
+    "facebook.com",
+    "x.com",
+    "instagram.com",
+    "twitter.com",
+    "github.com"
+]

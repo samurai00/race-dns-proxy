@@ -13,10 +13,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{client::RetryableClient, config::Config};
+use crate::{
+    client::{DnsClientEntry, RetryableClient},
+    config::Config,
+};
 
 pub struct RaceHandler {
-    dns_clients: Vec<(RetryableClient, String, Vec<String>)>,
+    dns_clients: Vec<DnsClientEntry>,
 }
 
 impl RaceHandler {
@@ -25,23 +28,37 @@ impl RaceHandler {
         let client_config = Arc::new(create_client_config());
 
         let providers = config.get_providers()?;
-        for (addr, hostname, name, domains) in providers {
+        for (addr, hostname, name, domain_rules) in providers {
             let client = RetryableClient::new(addr, &hostname, client_config.clone()).await?;
-            dns_clients.push((client, name, domains));
+            dns_clients.push(DnsClientEntry {
+                client,
+                name,
+                domain_rules,
+            });
         }
 
         Ok(Self { dns_clients })
     }
 
-    fn matches_domain(query_name: &str, domains: &[String]) -> bool {
-        if domains.is_empty() {
+    fn matches_domain(query_name: &str, domain_rules: &(Vec<String>, Vec<String>)) -> bool {
+        let (includes, excludes) = domain_rules;
+
+        // 如果包含列表为空，表示处理所有域名
+        if includes.is_empty() {
             return true;
         }
+
         let query_name = query_name.trim_end_matches('.');
-        domains.iter().any(|suffix| {
-            let suffix = suffix.trim_start_matches('.');
-            query_name.ends_with(suffix)
-        })
+
+        // 首先检查是否在排除列表中
+        for exclude in excludes {
+            if query_name.ends_with(exclude) {
+                return false;
+            }
+        }
+
+        // 然后检查是否在包含列表中
+        includes.iter().any(|domain| query_name.ends_with(domain))
     }
 }
 
@@ -59,15 +76,16 @@ impl RequestHandler for RaceHandler {
         let matching_clients: Vec<_> = self
             .dns_clients
             .iter()
-            .filter(|(_, _, domains)| {
-                !domains.is_empty() && Self::matches_domain(&query_name, domains)
+            .filter(|dns_client_entry| {
+                !dns_client_entry.domain_rules.0.is_empty()
+                    && Self::matches_domain(&query_name, &dns_client_entry.domain_rules)
             })
             .collect();
 
         let clients_to_use = if matching_clients.is_empty() {
             self.dns_clients
                 .iter()
-                .filter(|(_, _, domains)| domains.is_empty())
+                .filter(|dns_client_entry| dns_client_entry.domain_rules.0.is_empty())
                 .collect::<Vec<_>>()
         } else {
             tracing::info!("Using specific DNS provider for domain: {}", query_name);
@@ -83,22 +101,22 @@ impl RequestHandler for RaceHandler {
             Vec::new();
         let mut names: Vec<&str> = Vec::new();
 
-        for (client, name, _) in clients_to_use {
+        for dns_client_entry in clients_to_use {
             let start = Instant::now();
-            let client = client.clone();
+            let client = dns_client_entry.client.clone();
             let name_clone = Name::from(query.name());
             let query_type = query.query_type();
             let query_class = query.query_class();
 
             let future = Box::pin(async move {
                 match client.query(name_clone, query_class, query_type).await {
-                    Ok(response) => Ok((response, start.elapsed(), name)),
+                    Ok(response) => Ok((response, start.elapsed(), &dns_client_entry.name)),
                     Err(e) => Err(e),
                 }
             });
 
             futures.push(future);
-            names.push(name);
+            names.push(&dns_client_entry.name);
         }
 
         let mut final_response_code = ResponseCode::ServFail;

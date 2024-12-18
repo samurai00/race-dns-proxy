@@ -14,6 +14,8 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpStream as TokioTcpStream;
 use tokio::sync::watch;
 
+use crate::config::DomainRules;
+
 #[derive(Clone)]
 pub struct RetryableClient {
     dns_name: String,
@@ -22,6 +24,12 @@ pub struct RetryableClient {
     client_sender: watch::Sender<ClientHolder>,
     client_config: Arc<ClientConfig>,
     reconnect_tx: tokio::sync::mpsc::Sender<()>,
+}
+
+pub struct DnsClientEntry {
+    pub client: RetryableClient,
+    pub name: String,
+    pub domain_rules: DomainRules,
 }
 
 #[derive(Clone)]
