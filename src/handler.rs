@@ -16,7 +16,7 @@ use std::{
 use crate::{client::RetryableClient, config::Config};
 
 pub struct RaceHandler {
-    dns_clients: Vec<(RetryableClient, String)>,
+    dns_clients: Vec<(RetryableClient, String, Vec<String>)>,
 }
 
 impl RaceHandler {
@@ -24,14 +24,24 @@ impl RaceHandler {
         let mut dns_clients = Vec::new();
         let client_config = Arc::new(create_client_config());
 
-        // 从配置文件初始化 DoH DNS客户端
         let providers = config.get_providers()?;
-        for (addr, hostname, name) in providers {
+        for (addr, hostname, name, domains) in providers {
             let client = RetryableClient::new(addr, &hostname, client_config.clone()).await?;
-            dns_clients.push((client, name));
+            dns_clients.push((client, name, domains));
         }
 
         Ok(Self { dns_clients })
+    }
+
+    fn matches_domain(query_name: &str, domains: &[String]) -> bool {
+        if domains.is_empty() {
+            return true;
+        }
+        let query_name = query_name.trim_end_matches('.');
+        domains.iter().any(|suffix| {
+            let suffix = suffix.trim_start_matches('.');
+            query_name.ends_with(suffix)
+        })
     }
 }
 
@@ -42,14 +52,41 @@ impl RequestHandler for RaceHandler {
         request: &Request,
         mut response_handle: R,
     ) -> ResponseInfo {
-        // 构建查询任务
         let query = request.query();
         let request_id = request.id();
+        let query_name = query.name().to_string();
+
+        let matching_clients: Vec<_> = self
+            .dns_clients
+            .iter()
+            .filter(|(_, _, domains)| {
+                !domains.is_empty() && Self::matches_domain(&query_name, domains)
+            })
+            .collect();
+
+        let clients_to_use = if matching_clients.is_empty() {
+            tracing::info!(
+                "No specific DNS provider for domain: {}, using fallback providers",
+                query_name
+            );
+            self.dns_clients
+                .iter()
+                .filter(|(_, _, domains)| domains.is_empty())
+                .collect::<Vec<_>>()
+        } else {
+            matching_clients
+        };
+
+        if clients_to_use.is_empty() {
+            tracing::error!("No DNS provider available for domain: {}", query_name);
+            return create_servfail_response(request_id);
+        }
+
         let mut futures: Vec<BoxFuture<'_, Result<(DnsResponse, Duration, &String), _>>> =
             Vec::new();
         let mut names: Vec<&str> = Vec::new();
 
-        for (client, name) in &self.dns_clients {
+        for (client, name, _) in clients_to_use {
             let start = Instant::now();
             let client = client.clone();
             let name_clone = Name::from(query.name());
@@ -67,8 +104,7 @@ impl RequestHandler for RaceHandler {
             names.push(name);
         }
 
-        // 使用select_all获取所有响应
-        let mut final_response_code = ResponseCode::ServFail; // 默认值
+        let mut final_response_code = ResponseCode::ServFail;
         let mut responses: Vec<(ResponseCode, Message, &str, Duration)> = Vec::new();
         let mut has_sent_response = false;
         let mut remaining = futures;
@@ -80,11 +116,9 @@ impl RequestHandler for RaceHandler {
                     let mut message = response.into_message();
                     message.set_id(request_id);
 
-                    // 记录所有响应
                     responses.push((response_code, message.clone(), name, elapsed));
 
                     if !has_sent_response {
-                        // 如果是成功响应（非ServFail且非NXDomain），直接发送给客户端
                         if response_code != ResponseCode::ServFail
                             && response_code != ResponseCode::NXDomain
                         {
@@ -138,9 +172,7 @@ impl RequestHandler for RaceHandler {
             }
         }
 
-        // 如果还没有发送响应，从已收集的响应中选择一个发送
         if !has_sent_response && !responses.is_empty() {
-            // 优先选择 NXDomain，其次选择 ServFail
             let selected_response = responses
                 .iter()
                 .find(|(code, ..)| *code == ResponseCode::NXDomain)
@@ -150,7 +182,7 @@ impl RequestHandler for RaceHandler {
                         .find(|(code, ..)| *code == ResponseCode::ServFail)
                 })
                 .or_else(|| responses.first())
-                .unwrap(); // 前面已经加了非空判断，所以这里必定至少有一个
+                .unwrap();
 
             let (response_code, message, name, _) = selected_response;
             tracing::info!(
@@ -170,14 +202,13 @@ impl RequestHandler for RaceHandler {
 
             if let Err(e) = response_handle.send_response(response).await {
                 tracing::error!("Failed to send successful DNS response: {}", e);
-                has_sent_response = false; // 发送失败则标记为未发送
+                has_sent_response = false;
             } else {
                 final_response_code = *response_code;
                 has_sent_response = true;
             }
         }
 
-        // 返回适当的 ResponseInfo
         if has_sent_response {
             let mut header = Header::new();
             header.set_id(request_id);
@@ -211,7 +242,6 @@ impl RequestHandler for RaceHandler {
 }
 
 fn create_client_config() -> ClientConfig {
-    // 创建根证书存储
     let root_store = RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS
             .iter()
@@ -230,7 +260,6 @@ fn create_client_config() -> ClientConfig {
         root_store.roots.len()
     );
 
-    // 构建 TLS 客户端配置
     ClientConfig::builder()
         .with_safe_defaults()
         .with_root_certificates(root_store)
@@ -286,4 +315,13 @@ fn format_response_code(code: ResponseCode) -> String {
     } else {
         format!("({}) ", code.to_str())
     }
+}
+
+fn create_servfail_response(request_id: u16) -> ResponseInfo {
+    let mut header = Header::new();
+    header.set_id(request_id);
+    header.set_message_type(MessageType::Response);
+    header.set_op_code(OpCode::Query);
+    header.set_response_code(ResponseCode::ServFail);
+    ResponseInfo::from(header)
 }

@@ -5,16 +5,19 @@
 [providers.alidns-doh]
 addr = "223.5.5.5:443"
 hostname = "dns.alidns.com"
+domains = []
 
 [providers.dnspod-doh]
 addr = "1.12.12.12:443"
 hostname = "doh.pub"
+domains = []
 
-# Uncomment below to enable more providers
-# [providers.cloudflare-doh]
-# addr = "1.1.1.1:443"
-# hostname = "1.1.1.1"
+[providers.google-doh]
+addr = "8.8.8.8:443"
+hostname = "dns.google"
+domains = [".google.com", "google.com.hk", ".youtube.com", ".facebook.com", ".x.com", ".instagram.com", ".twitter.com", ".github.com"]
 
-# [providers.google-doh]
-# addr = "8.8.8.8:443"
-# hostname = "dns.google"
+[providers.cloudflare-doh]
+addr = "1.1.1.1:443"
+hostname = "1.1.1.1"
+domains = [".google.com", "google.com.hk", ".youtube.com", ".facebook.com", ".x.com", ".instagram.com", ".twitter.com", ".github.com"]
