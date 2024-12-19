@@ -77,10 +77,23 @@ impl RequestHandler for RaceHandler {
             .dns_clients
             .iter()
             .filter(|dns_client_entry| {
-                !dns_client_entry.domain_rules.0.is_empty()
-                    && Self::matches_domain(&query_name, &dns_client_entry.domain_rules)
+                let matches = !dns_client_entry.domain_rules.0.is_empty()
+                    && Self::matches_domain(&query_name, &dns_client_entry.domain_rules);
+                tracing::debug!(
+                    "Provider {} matches domain {}: {}",
+                    dns_client_entry.name,
+                    query_name,
+                    matches
+                );
+                matches
             })
             .collect();
+
+        tracing::debug!(
+            "Found {} matching providers for domain {}",
+            matching_clients.len(),
+            query_name
+        );
 
         let clients_to_use = if matching_clients.is_empty() {
             self.dns_clients

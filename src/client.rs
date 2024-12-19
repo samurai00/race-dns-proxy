@@ -113,33 +113,44 @@ impl RetryableClient {
             };
 
             if let Some(mut client) = client_holder.client {
-                match client.query(name.clone(), query_class, query_type).await {
-                    Ok(response) => {
-                        if retries > 0 {
-                            tracing::debug!(
-                                "Query success after {} retries, <{}>",
-                                retries,
+                match tokio::time::timeout(
+                    Duration::from_secs(5),
+                    client.query(name.clone(), query_class, query_type),
+                )
+                .await
+                {
+                    Ok(result) => match result {
+                        Ok(response) => {
+                            if retries > 0 {
+                                tracing::debug!(
+                                    "Query success after {} retries, <{}>",
+                                    retries,
+                                    self.dns_name
+                                );
+                            }
+                            return Ok(response);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Query failed for <{}>: {:?}, attempting reconnect, <{}>",
+                                name,
+                                e,
                                 self.dns_name
                             );
+                            self.client_sender.send_if_modified(|inner| {
+                                if inner.version == client_holder.version {
+                                    inner.client = None;
+                                    inner.version += 1;
+                                    true
+                                } else {
+                                    false
+                                }
+                            });
                         }
-                        return Ok(response);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Query failed for <{}>: {:?}, attempting reconnect, <{}>",
-                            name,
-                            e,
-                            self.dns_name
-                        );
-                        self.client_sender.send_if_modified(|inner| {
-                            if inner.version == client_holder.version {
-                                inner.client = None;
-                                inner.version += 1;
-                                true
-                            } else {
-                                false
-                            }
-                        });
+                    },
+                    Err(_) => {
+                        tracing::warn!("Query timeout for <{}>, <{}>", name, self.dns_name);
+                        return Err(anyhow::anyhow!("Query timeout"));
                     }
                 }
             }
