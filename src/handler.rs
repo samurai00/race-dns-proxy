@@ -43,22 +43,24 @@ impl RaceHandler {
     fn matches_domain(query_name: &str, domain_rules: &(Vec<String>, Vec<String>)) -> bool {
         let (includes, excludes) = domain_rules;
 
-        // 如果包含列表为空，表示处理所有域名
+        // If the include list is empty, it means process all domains
         if includes.is_empty() {
             return true;
         }
 
         let query_name = query_name.trim_end_matches('.');
 
-        // 首先检查是否在排除列表中
+        // First check if it's in the exclude list
         for exclude in excludes {
             if query_name.ends_with(exclude) {
                 return false;
             }
         }
 
-        // 然后检查是否在包含列表中
-        includes.iter().any(|domain| query_name.ends_with(domain))
+        // Then check if it's in the include list
+        includes
+            .iter()
+            .any(|domain| is_domain_match(query_name, domain))
     }
 }
 
@@ -352,4 +354,20 @@ fn create_servfail_response(request_id: u16) -> ResponseInfo {
     header.set_op_code(OpCode::Query);
     header.set_response_code(ResponseCode::ServFail);
     ResponseInfo::from(header)
+}
+
+#[inline]
+fn is_domain_match(query: &str, pattern: &str) -> bool {
+    if query == pattern {
+        return true;
+    }
+
+    if query.ends_with(pattern) {
+        let prefix_len = query.len() - pattern.len();
+        if prefix_len > 0 {
+            return query.as_bytes()[prefix_len - 1] == b'.';
+        }
+    }
+
+    false
 }

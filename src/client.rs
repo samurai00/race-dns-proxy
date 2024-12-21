@@ -114,7 +114,7 @@ impl RetryableClient {
 
             if let Some(mut client) = client_holder.client {
                 match tokio::time::timeout(
-                    Duration::from_secs(5),
+                    Duration::from_secs(3),
                     client.query(name.clone(), query_class, query_type),
                 )
                 .await
@@ -137,22 +137,21 @@ impl RetryableClient {
                                 e,
                                 self.dns_name
                             );
-                            self.client_sender.send_if_modified(|inner| {
-                                if inner.version == client_holder.version {
-                                    inner.client = None;
-                                    inner.version += 1;
-                                    true
-                                } else {
-                                    false
-                                }
-                            });
                         }
                     },
                     Err(_) => {
                         tracing::warn!("Query timeout for <{}>, <{}>", name, self.dns_name);
-                        return Err(anyhow::anyhow!("Query timeout"));
                     }
                 }
+                self.client_sender.send_if_modified(|inner| {
+                    if inner.version == client_holder.version {
+                        inner.client = None;
+                        inner.version += 1;
+                        true
+                    } else {
+                        false
+                    }
+                });
             }
 
             if retries >= MAX_RETRIES {

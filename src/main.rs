@@ -31,19 +31,17 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 解析命令行参数
     let args = Args::parse();
 
-    // 初始化日志
     let _guard = logger::init_logger("race_dns_proxy=info,info", args.log);
 
-    // 加载配置文件
+    // Load configuration file
     let config = config::Config::load(&args.config)?;
 
     let handler = handler::RaceHandler::new(&config).await?;
     let mut server = ServerFuture::new(handler);
 
-    // 监听UDP端口
+    // Listen on UDP port
     let addr = format!("0.0.0.0:{}", args.port);
     let socket = UdpSocket::bind(&addr).await?;
     tracing::info!("DNS proxy server listening on {}", addr);
