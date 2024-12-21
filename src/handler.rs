@@ -1,6 +1,7 @@
 use anyhow::Result;
-use futures::future::{select_all, BoxFuture};
-use hickory_client::{op::DnsResponse, rr::Name};
+use futures::StreamExt;
+use futures_util::stream::FuturesUnordered;
+use hickory_client::rr::Name;
 use hickory_proto::op::Message;
 use hickory_server::{
     authority::MessageResponseBuilder,
@@ -112,41 +113,37 @@ impl RequestHandler for RaceHandler {
             return create_servfail_response(request_id);
         }
 
-        let mut futures: Vec<BoxFuture<'_, Result<(DnsResponse, Duration, &String), _>>> =
-            Vec::new();
-        let mut names: Vec<&str> = Vec::new();
+        let mut futures = clients_to_use
+            .iter()
+            .map(move |dns_client_entry| {
+                let start = Instant::now();
+                let client = dns_client_entry.client.clone();
+                let name_clone = Name::from(query.name());
+                let query_type = query.query_type();
+                let query_class = query.query_class();
+                let name = dns_client_entry.name.clone();
 
-        for dns_client_entry in clients_to_use {
-            let start = Instant::now();
-            let client = dns_client_entry.client.clone();
-            let name_clone = Name::from(query.name());
-            let query_type = query.query_type();
-            let query_class = query.query_class();
-
-            let future = Box::pin(async move {
-                match client.query(name_clone, query_class, query_type).await {
-                    Ok(response) => Ok((response, start.elapsed(), &dns_client_entry.name)),
-                    Err(e) => Err(e),
-                }
-            });
-
-            futures.push(future);
-            names.push(&dns_client_entry.name);
-        }
+                Box::pin(async move {
+                    match client.query(name_clone, query_class, query_type).await {
+                        Ok(response) => Ok((response, start.elapsed(), name)),
+                        Err(e) => Err((e, start.elapsed(), name)),
+                    }
+                })
+            })
+            .collect::<FuturesUnordered<_>>();
 
         let mut final_response_code = ResponseCode::ServFail;
-        let mut responses: Vec<(ResponseCode, Message, &str, Duration)> = Vec::new();
+        let mut responses: Vec<(ResponseCode, Message, String, Duration)> = Vec::new();
         let mut has_sent_response = false;
-        let mut remaining = futures;
 
-        while !remaining.is_empty() {
-            match select_all(remaining).await {
-                (Ok((response, elapsed, name)), _index, rest) => {
+        while let Some(result) = futures.next().await {
+            match result {
+                Ok((response, elapsed, name)) => {
                     let response_code = response.header().response_code();
                     let mut message = response.into_message();
                     message.set_id(request_id);
 
-                    responses.push((response_code, message.clone(), name, elapsed));
+                    responses.push((response_code, message.clone(), name.clone(), elapsed));
 
                     if !has_sent_response {
                         if response_code != ResponseCode::ServFail
@@ -192,12 +189,9 @@ impl RequestHandler for RaceHandler {
                             format_answers(message.query(), message.answers())
                         );
                     }
-                    remaining = rest;
                 }
-                (Err(e), index, rest) => {
-                    let name = names[index];
-                    tracing::error!("Query failed: {:?}, <{}>", e, name);
-                    remaining = rest;
+                Err((e, elapsed, name)) => {
+                    tracing::error!("Query failed: {:?}, {:?}, <{}>", e, elapsed, name);
                 }
             }
         }
