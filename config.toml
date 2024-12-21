@@ -14,32 +14,19 @@ domain_groups = ["default"]
 [providers.google-doh]
 addr = "8.8.8.8:443"
 hostname = "dns.google"
-domain_groups = ["google", "google_exclude", "foreign"]
+domain_groups = ["google", "google_exclude", "social"]
 
 [providers.cloudflare-doh]
 addr = "1.1.1.1:443"
 hostname = "1.1.1.1"
-domain_groups = ["google", "google_exclude", "foreign"]
+domain_groups = ["google", "google_exclude", "social"]
 
 # Domain Groups Configuration
 [domain_groups]
-default = []  # All domains
+default = [] # All domains
 
-google = [
-    "google.com",
-    "google.com.hk",
-    "googleapis.com",
-    "youtube.com"
-]
+google = ["google.com", "google.com.hk", "googleapis.com", "youtube.com"]
 
-google_exclude = [
-    "!safebrowsing.googleapis.com"
-]
+google_exclude = ["!safebrowsing.googleapis.com"]
 
-foreign = [
-    "facebook.com",
-    "x.com",
-    "instagram.com",
-    "twitter.com",
-    "github.com"
-]
+social = ["facebook.com", "x.com", "instagram.com", "twitter.com", "github.com"]
