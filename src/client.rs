@@ -44,9 +44,8 @@ impl RetryableClient {
         dns_name: &str,
         client_config: Arc<ClientConfig>,
     ) -> Result<Self> {
-        let client = Self::create_client(addr, dns_name, client_config.clone()).await?;
         let client_holder = ClientHolder {
-            client: Some(client),
+            client: None,
             version: 0,
         };
         let (tx, rx) = watch::channel(client_holder);
@@ -62,6 +61,9 @@ impl RetryableClient {
         };
 
         tokio::spawn(async move {
+            // initialize the connection
+            reconnect_client.handle_reconnect().await;
+            // wait for the reconnection signal
             while reconnect_rx.recv().await.is_some() {
                 reconnect_client.handle_reconnect().await;
             }
@@ -202,7 +204,7 @@ impl RetryableClient {
             match Self::create_client(self.addr, &self.dns_name, self.client_config.clone()).await {
                 Ok(new_client) => {
                     self.client_sender.send_if_modified(|inner| {
-                        tracing::info!("Reconnected to <{}>", self.dns_name);
+                        tracing::info!("Established connection with <{}>", self.dns_name);
                         inner.client = Some(new_client);
                         inner.version += 1;
                         true
@@ -210,7 +212,11 @@ impl RetryableClient {
                     return;
                 }
                 Err(e) => {
-                    tracing::error!("Failed to reconnect: {:?}, <{}>", e, self.dns_name);
+                    tracing::error!(
+                        "Unable to establish connection: {:?}, <{}>",
+                        e,
+                        self.dns_name
+                    );
                     if is_network_unreachable_error(&e) {
                         retry_delay = MAX_RETRY_DELAY;
                     }
