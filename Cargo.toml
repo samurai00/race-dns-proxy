@@ -34,3 +34,8 @@ futures-util = { version = "0.3.31", default-features = false, features = [
 
 [features]
 default = ["mimalloc"]
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
