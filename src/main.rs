@@ -25,7 +25,7 @@ struct Args {
     log: Option<String>,
 
     /// Configuration file path
-    #[arg(short, long, default_value = "config.toml")]
+    #[arg(short, long, default_value = "race-dns-proxy.toml")]
     config: String,
 }
 

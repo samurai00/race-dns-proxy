@@ -23,7 +23,7 @@ A high-performance DNS proxy that races multiple DNS-over-HTTPS (DoH) providers 
 
 ## Configuration
 
-Create or modify `config.toml` to configure DNS providers:
+Create or modify `race-dns-proxy.toml` to configure DNS providers:
 
 ```toml
 [providers.alidns-doh]
@@ -46,10 +46,12 @@ race-dns-proxy [OPTIONS]
 ### Command Line Options
 
 ```
+Usage: race-dns-proxy [OPTIONS]
+
 Options:
   -p, --port <PORT>      DNS server listening port [default: 5653]
       --log <LOG>        Log filepath
-  -c, --config <CONFIG>  Configuration file path [default: config.toml]
+  -c, --config <CONFIG>  Configuration file path [default: race-dns-proxy.toml]
   -h, --help             Print help
   -V, --version          Print version
 ```
