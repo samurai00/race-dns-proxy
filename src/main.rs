@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 #[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
 #[cfg(feature = "mimalloc")]
@@ -7,7 +9,10 @@ static GLOBAL: MiMalloc = MiMalloc;
 use anyhow::Result;
 use clap::Parser;
 use hickory_server::ServerFuture;
-use tokio::net::UdpSocket;
+use tokio::{
+    net::{TcpListener, UdpSocket},
+    signal,
+};
 
 mod client;
 mod config;
@@ -44,10 +49,39 @@ async fn main() -> Result<()> {
     // Listen on UDP port
     let addr = format!("0.0.0.0:{}", args.port);
     let socket = UdpSocket::bind(&addr).await?;
-    tracing::info!("DNS proxy server listening on {}", addr);
-
+    tracing::info!("DNS proxy server listening on {}/UDP", addr);
     server.register_socket(socket);
-    server.block_until_done().await?;
+
+    // Listen on TCP port
+    let addr = format!("0.0.0.0:{}", args.port);
+    let listener = TcpListener::bind(&addr).await?;
+    tracing::info!("DNS proxy server listening on {}/TCP", addr);
+    server.register_listener(listener, Duration::from_secs(10));
+
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    server.shutdown_gracefully().await?;
+    tracing::info!("Server shutdown completed");
 
     Ok(())
 }

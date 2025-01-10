@@ -14,13 +14,13 @@ hickory-client = { version = "0.24", default-features = false, features = [
     "backtrace",
 ] }
 hickory-server = { version = "0.24", features = ["dns-over-https-rustls"] }
-tokio = { version = "1.42", features = ["full"] }
+tokio = { version = "1.43", features = ["full"] }
 futures = "0.3"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 tracing-appender = "0.2"
-clap = { version = "4.5.23", features = ["derive"] }
+clap = { version = "4.5.26", features = ["derive"] }
 async-trait = "0.1"
 rustls = "0.21"
 webpki-roots = "0.26"
