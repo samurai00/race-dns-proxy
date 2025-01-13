@@ -27,6 +27,7 @@ default = [] # All domains
 
 google = ["google.com", "google.com.hk", "googleapis.com", "youtube.com"]
 
+# Use prefix '!' to exclude domains
 google_exclude = ["!safebrowsing.googleapis.com"]
 
 social = ["facebook.com", "x.com", "instagram.com", "twitter.com", "github.com"]

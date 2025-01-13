@@ -12,6 +12,7 @@ A high-performance DNS proxy that races multiple DNS-over-HTTPS (DoH) providers 
 - Smart response selection based on speed and status
 - Built with Rust for high performance and reliability
 - Configurable DNS providers via TOML configuration
+- Support domain group configuration to specify different DNS servers for different domains
 
 ## Dependencies
 
@@ -26,13 +27,20 @@ A high-performance DNS proxy that races multiple DNS-over-HTTPS (DoH) providers 
 Create or modify `race-dns-proxy.toml` to configure DNS providers:
 
 ```toml
+[providers]
 [providers.alidns-doh]
 addr = "223.5.5.5:443"
 hostname = "dns.alidns.com"
+domain_groups = ["default"]
 
 [providers.dnspod-doh]
 addr = "1.12.12.12:443"
 hostname = "doh.pub"
+domain_groups = ["default"]
+
+# Domain Groups Configuration
+[domain_groups]
+default = [] # All domains
 ```
 
 ## Usage
