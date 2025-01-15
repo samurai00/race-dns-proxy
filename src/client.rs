@@ -235,7 +235,7 @@ impl RetryableClient {
 }
 
 fn is_network_unreachable_error(e: &anyhow::Error) -> bool {
-    e.downcast_ref::<std::io::Error>().map_or(false, |e| {
+    e.downcast_ref::<std::io::Error>().is_some_and(|e| {
         if e.raw_os_error() == Some(51) {
             // 51 = ENETUNREACH on Unix
             return true;

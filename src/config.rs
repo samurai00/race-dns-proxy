@@ -50,7 +50,7 @@ impl Config {
             if provider.domain_groups.iter().any(|g| {
                 self.domain_groups
                     .get(g)
-                    .map_or(false, |domains| domains.is_empty())
+                    .is_some_and(|domains| domains.is_empty())
             }) {
                 includes.clear();
                 excludes.clear();
