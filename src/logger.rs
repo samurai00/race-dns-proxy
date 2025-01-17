@@ -1,4 +1,4 @@
-use time::macros::{format_description, offset};
+use time::macros::format_description;
 use tracing_subscriber::{
     filter::filter_fn, layer::SubscriberExt, util::SubscriberInitExt, Layer as _,
 };
@@ -13,7 +13,10 @@ pub fn init_logger(
     // Create custom time format: yyyy-MM-dd HH:mm:ss.SSS
     let format =
         format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]");
-    let timer = tracing_subscriber::fmt::time::OffsetTime::new(offset!(+8), format);
+    let timer = tracing_subscriber::fmt::time::OffsetTime::new(
+        time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC),
+        format,
+    );
 
     let mut guards = vec![];
 
