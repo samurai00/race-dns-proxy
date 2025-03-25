@@ -1,19 +1,20 @@
 [package]
 name = "race-dns-proxy"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-hickory-proto = { version = "0.24", features = [
-    "tokio-runtime",
-    "dns-over-https",
+hickory-proto = { version = "0.25", features = [
+    "tokio",
+    "https-ring",
+    "backtrace",
+    "webpki-roots",
+] }
+hickory-client = { version = "0.25", default-features = false, features = [
+    "https-ring",
     "backtrace",
 ] }
-hickory-client = { version = "0.24", default-features = false, features = [
-    "dns-over-https-rustls",
-    "backtrace",
-] }
-hickory-server = { version = "0.24", features = ["dns-over-https-rustls"] }
+hickory-server = { version = "0.25", features = ["https-ring"] }
 tokio = { version = "1.43", features = ["full"] }
 futures = "0.3"
 anyhow = "1.0"
@@ -22,7 +23,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 tracing-appender = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 async-trait = "0.1"
-rustls = "0.21"
+rustls = "0.23"
 webpki-roots = "0.26"
 time = { version = "0.3", features = [
     "serde-well-known",
@@ -32,7 +33,7 @@ time = { version = "0.3", features = [
 ] }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
-mimalloc = { version = "0.1.43", optional = true }
+mimalloc = { version = "0.1", optional = true }
 futures-util = { version = "0.3.31", default-features = false, features = [
     "std",
 ] }

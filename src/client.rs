@@ -1,17 +1,14 @@
 use anyhow::Result;
 use hickory_client::{
-    client::{AsyncClient, ClientConnection, ClientHandle},
-    h2::HttpsClientConnection,
-    op::DnsResponse,
-    rr::Name,
+    client::{Client, ClientHandle},
+    proto::{
+        rr::{DNSClass, Name, RecordType},
+        runtime::TokioRuntimeProvider,
+    },
 };
-use hickory_proto::{
-    iocompat::AsyncIoTokioAsStd,
-    rr::{DNSClass, RecordType},
-};
+use hickory_proto::{h2::HttpsClientStreamBuilder, xfer::DnsResponse};
 use rustls::ClientConfig;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
-use tokio::net::TcpStream as TokioTcpStream;
 use tokio::sync::watch;
 
 use crate::config::DomainRules;
@@ -34,7 +31,7 @@ pub struct DnsClientEntry {
 
 #[derive(Clone)]
 pub struct ClientHolder {
-    client: Option<AsyncClient>,
+    client: Option<Client>,
     version: u64,
 }
 
@@ -83,14 +80,14 @@ impl RetryableClient {
         addr: SocketAddr,
         dns_name: &str,
         client_config: Arc<ClientConfig>,
-    ) -> Result<AsyncClient> {
+    ) -> Result<Client> {
         tracing::debug!(target: concat!(module_path!(), "::stdout"), "Creating HTTPS connection to {}", dns_name);
-        let conn: HttpsClientConnection<AsyncIoTokioAsStd<TokioTcpStream>> =
-            HttpsClientConnection::new(addr, dns_name.to_string(), client_config);
-        tracing::debug!(target: concat!(module_path!(), "::stdout"), "Creating DNS stream: {}", dns_name);
-        let stream = conn.new_stream(None);
+
+        let provider = TokioRuntimeProvider::new();
+        let https_builder = HttpsClientStreamBuilder::with_client_config(client_config, provider);
+        let connect = https_builder.build(addr, dns_name.to_string(), "/dns-query".to_string());
         tracing::debug!(target: concat!(module_path!(), "::stdout"), "Connecting AsyncClient: {}", dns_name);
-        let (client, bg) = AsyncClient::connect(stream).await?;
+        let (client, bg) = Client::connect(connect).await?;
         tokio::spawn(bg);
         Ok(client)
     }

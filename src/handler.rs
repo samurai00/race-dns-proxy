@@ -1,14 +1,14 @@
 use anyhow::Result;
 use futures::StreamExt;
 use futures_util::stream::FuturesUnordered;
-use hickory_client::rr::Name;
-use hickory_proto::op::Message;
+use hickory_client::proto::rr::Name;
+use hickory_proto::{op::Message, rustls::client_config};
 use hickory_server::{
     authority::MessageResponseBuilder,
     proto::op::{Header, MessageType, OpCode, ResponseCode},
     server::{Request, RequestHandler, ResponseHandler, ResponseInfo},
 };
-use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
+use rustls::ClientConfig;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -18,6 +18,8 @@ use crate::{
     client::{DnsClientEntry, RetryableClient},
     config::Config,
 };
+
+const ALPN_H2: &[u8] = b"h2";
 
 pub struct RaceHandler {
     dns_clients: Vec<DnsClientEntry>,
@@ -72,8 +74,9 @@ impl RequestHandler for RaceHandler {
         request: &Request,
         mut response_handle: R,
     ) -> ResponseInfo {
-        let query = request.query();
+        let request_info = request.request_info().unwrap();
         let request_id = request.id();
+        let query = request_info.query;
         let query_name = query.name().to_string();
 
         let matching_clients: Vec<_> = self
@@ -266,28 +269,9 @@ impl RequestHandler for RaceHandler {
 }
 
 fn create_client_config() -> ClientConfig {
-    let root_store = RootCertStore {
-        roots: webpki_roots::TLS_SERVER_ROOTS
-            .iter()
-            .map(|ta| {
-                OwnedTrustAnchor::from_subject_spki_name_constraints(
-                    ta.subject.as_ref().to_vec(),
-                    ta.subject_public_key_info.as_ref().to_vec(),
-                    ta.name_constraints.as_ref().map(|nc| nc.as_ref().to_vec()),
-                )
-            })
-            .collect(),
-    };
-
-    tracing::debug!(
-        "Created root store with {} certificates",
-        root_store.roots.len()
-    );
-
-    ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(root_store)
-        .with_no_client_auth()
+    let mut config = client_config();
+    config.alpn_protocols = vec![ALPN_H2.to_vec()];
+    config
 }
 
 fn format_answers(
@@ -307,14 +291,13 @@ fn format_answers(
     let mut a_records = Vec::new();
 
     for record in answers {
-        if let Some(data) = record.data() {
-            let data_str = data.to_string();
-            // Check if it's an A record (contains only numbers and dots)
-            if data_str.chars().all(|c| c.is_ascii_digit() || c == '.') {
-                a_records.push(data_str);
-            } else {
-                non_a_records.push(data_str);
-            }
+        let data = record.data();
+        let data_str = data.to_string();
+        // Check if it's an A record (contains only numbers and dots)
+        if data_str.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            a_records.push(data_str);
+        } else {
+            non_a_records.push(data_str);
         }
     }
 

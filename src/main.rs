@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 #[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
 #[cfg(feature = "mimalloc")]
@@ -9,6 +7,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 use anyhow::Result;
 use clap::Parser;
 use hickory_server::ServerFuture;
+use std::time::Duration;
 use tokio::{
     net::{TcpListener, UdpSocket},
     signal,
@@ -41,20 +40,44 @@ async fn main() -> Result<()> {
     let _guard = logger::init_logger("race_dns_proxy=info,info", args.log);
 
     // Load configuration file
-    let config = config::Config::load(&args.config)?;
+    let config = match config::Config::load(&args.config) {
+        Ok(config) => config,
+        Err(err) => {
+            tracing::error!("Failed to load configuration file: {}", err);
+            return Err(err);
+        }
+    };
 
-    let handler = handler::RaceHandler::new(&config).await?;
+    let handler = match handler::RaceHandler::new(&config).await {
+        Ok(handler) => handler,
+        Err(err) => {
+            tracing::error!("Failed to initialize race handler: {}", err);
+            return Err(err);
+        }
+    };
     let mut server = ServerFuture::new(handler);
 
     // Listen on UDP port
     let addr = format!("0.0.0.0:{}", args.port);
-    let socket = UdpSocket::bind(&addr).await?;
+    let socket = match UdpSocket::bind(&addr).await {
+        Ok(socket) => socket,
+        Err(err) => {
+            tracing::error!("Failed to bind UDP socket on {}: {}", addr, err);
+            return Err(err.into());
+        }
+    };
     tracing::info!("DNS proxy server listening on {}/UDP", addr);
     server.register_socket(socket);
 
     // Listen on TCP port
     let addr = format!("0.0.0.0:{}", args.port);
-    let listener = TcpListener::bind(&addr).await?;
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            tracing::error!("Failed to bind TCP listener on {}: {}", addr, err);
+            return Err(err.into());
+        }
+    };
     tracing::info!("DNS proxy server listening on {}/TCP", addr);
     server.register_listener(listener, Duration::from_secs(10));
 
@@ -80,8 +103,13 @@ async fn main() -> Result<()> {
         _ = terminate => {},
     }
 
-    server.shutdown_gracefully().await?;
-    tracing::info!("Server shutdown completed");
+    match server.shutdown_gracefully().await {
+        Ok(_) => tracing::info!("Server shutdown completed"),
+        Err(err) => {
+            tracing::error!("Error during server shutdown: {}", err);
+            return Err(err.into());
+        }
+    };
 
     Ok(())
 }
