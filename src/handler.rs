@@ -283,7 +283,7 @@ fn format_answers(
     });
 
     if answers.is_empty() {
-        return format!("{} → (no answers)", query_info);
+        return format!("{query_info} → (no answers)");
     }
 
     // Group answers by record type
@@ -313,7 +313,7 @@ fn format_answers(
         result.push_str(&a_records.join(", "));
     }
 
-    format!("{} → {}", query_info, result)
+    format!("{query_info} → {result}")
 }
 
 fn format_response_code(code: ResponseCode) -> String {

@@ -1,6 +1,6 @@
 [package]
 name = "race-dns-proxy"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
 [dependencies]
@@ -15,7 +15,7 @@ hickory-client = { version = "0.25", default-features = false, features = [
     "backtrace",
 ] }
 hickory-server = { version = "0.25", features = ["https-ring"] }
-tokio = { version = "1.43", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 anyhow = "1.0"
 tracing = "0.1"
@@ -24,7 +24,7 @@ tracing-appender = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 async-trait = "0.1"
 rustls = "0.23"
-webpki-roots = "0.26"
+webpki-roots = "1.0.1"
 time = { version = "0.3", features = [
     "serde-well-known",
     "std",
