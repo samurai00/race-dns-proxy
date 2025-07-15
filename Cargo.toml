@@ -1,6 +1,6 @@
 [package]
 name = "race-dns-proxy"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 
 [dependencies]
@@ -31,7 +31,7 @@ time = { version = "0.3", features = [
     "macros",
     "local-offset",
 ] }
-toml = "0.8"
+toml = "0.9"
 serde = { version = "1", features = ["derive"] }
 mimalloc = { version = "0.1", optional = true }
 futures-util = { version = "0.3.31", default-features = false, features = [

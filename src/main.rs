@@ -21,6 +21,10 @@ mod logger;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// DNS server listening host
+    #[arg(short, long, default_value = "[::]")]
+    host: String,
+
     /// DNS server listening port
     #[arg(short, long, default_value_t = 5653)]
     port: u16,
@@ -58,7 +62,7 @@ async fn main() -> Result<()> {
     let mut server = ServerFuture::new(handler);
 
     // Listen on UDP port
-    let addr = format!("0.0.0.0:{}", args.port);
+    let addr = format!("{}:{}", args.host, args.port);
     let socket = match UdpSocket::bind(&addr).await {
         Ok(socket) => socket,
         Err(err) => {
@@ -70,7 +74,7 @@ async fn main() -> Result<()> {
     server.register_socket(socket);
 
     // Listen on TCP port
-    let addr = format!("0.0.0.0:{}", args.port);
+    let addr = format!("{}:{}", args.host, args.port);
     let listener = match TcpListener::bind(&addr).await {
         Ok(listener) => listener,
         Err(err) => {
