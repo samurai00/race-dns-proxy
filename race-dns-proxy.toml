@@ -3,6 +3,7 @@
 
 [providers.alidns-doh]
 addr = "223.5.5.5:443"
+# addr = "[2400:3200::1]:443"
 hostname = "dns.alidns.com"
 domain_groups = ["default"]
 

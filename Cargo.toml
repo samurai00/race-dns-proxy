@@ -24,7 +24,7 @@ tracing-appender = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 async-trait = "0.1"
 rustls = "0.23"
-webpki-roots = "1.0.1"
+webpki-roots = "1.0.2"
 time = { version = "0.3", features = [
     "serde-well-known",
     "std",
