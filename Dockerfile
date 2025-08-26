@@ -2,7 +2,8 @@ FROM rust:alpine AS builder
 
 WORKDIR /opt/src/race-dns-proxy
 RUN apk add --no-cache musl-dev cmake make git g++ zstd-dev perl
-COPY . .
+COPY Cargo.lock Cargo.toml src /opt/src/race-dns-proxy/
+COPY src /opt/src/race-dns-proxy/src
 
 ARG CARGO_PROFILE=release
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
