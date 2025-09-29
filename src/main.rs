@@ -59,6 +59,11 @@ async fn main() -> Result<()> {
             return Err(err);
         }
     };
+
+    let pkg_name = env!("CARGO_PKG_NAME");
+    let pkg_version = env!("CARGO_PKG_VERSION");
+    tracing::info!("Starting {} v{}", pkg_name, pkg_version);
+
     let mut server = ServerFuture::new(handler);
 
     // Listen on UDP port
