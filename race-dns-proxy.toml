@@ -22,6 +22,11 @@ addr = "1.1.1.1:443"
 hostname = "1.1.1.1"
 domain_groups = ["google", "google_exclude", "social"]
 
+[providers.quad9-doh]
+addr = "9.9.9.9:443"
+hostname = "dns.quad9.net"
+domain_groups = ["google", "google_exclude", "social"]
+
 # Domain Groups Configuration
 [domain_groups]
 default = [] # All domains
