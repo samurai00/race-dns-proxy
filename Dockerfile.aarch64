@@ -1,0 +1,35 @@
+FROM rust:1-slim-trixie AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    musl-tools cmake make g++ perl \
+    && rm -rf /var/lib/apt/lists/*
+RUN rustup target add aarch64-unknown-linux-musl
+
+WORKDIR /app
+
+COPY Cargo.lock Cargo.toml ./
+
+COPY src ./src
+
+ARG CARGO_PROFILE=release
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,sharing=private,target=/app/target \
+    cargo build --profile ${CARGO_PROFILE} --target aarch64-unknown-linux-musl \
+    && cp target/aarch64-unknown-linux-musl/${CARGO_PROFILE}/race-dns-proxy /app/race-dns-proxy
+
+FROM gcr.io/distroless/static-debian13
+
+USER nonroot:nonroot
+
+WORKDIR /app
+
+COPY --from=builder --chown=nonroot:nonroot /app/race-dns-proxy .
+COPY --chown=nonroot:nonroot race-dns-proxy.toml .
+
+EXPOSE 5653/tcp
+EXPOSE 5653/udp
+
+ENTRYPOINT ["/app/race-dns-proxy"]
+CMD ["-c", "/app/race-dns-proxy.toml"]
